@@ -27,6 +27,7 @@ import com.wepay.kafka.connect.bigquery.convert.BigQuerySchemaConverter;
 import com.wepay.kafka.connect.bigquery.convert.RecordConverter;
 import com.wepay.kafka.connect.bigquery.convert.SchemaConverter;
 
+import com.wepay.kafka.connect.bigquery.route.TableRouter;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.types.Password;
 import org.apache.kafka.common.config.ConfigDef;
@@ -39,15 +40,9 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.Optional;
 
 /**
  * Base class for connector and task configs; contains properties shared between the two of them.
@@ -233,6 +228,16 @@ public class BigQuerySinkConfig extends AbstractConfig {
   private static final String TABLE_CREATE_DOC =
           "Automatically create BigQuery tables if they don't already exist";
 
+  public static final String REGEX_TABLE_ROUTER_CONFIG = "RegexTableRouterTopics";
+  private static final ConfigDef.Type REGEX_TABLE_ROUTER_TYPE = ConfigDef.Type.STRING;
+  private static final String REGEX_TABLE_ROUTER_DEFAULT = null; ;
+  private static final ConfigDef.Importance REGEX_TABLE_ROUTER_IMPORTANCE =
+          ConfigDef.Importance.MEDIUM;
+  private static final String REGEX_TABLE_ROUTER_DOC =
+          "Topics that will use RegexTableRouter"+
+                  "specified in the format - <RegexTableRouterClassName>=<Comma separated list of topics>";
+
+
   static {
     config = new ConfigDef()
         .define(
@@ -365,6 +370,12 @@ public class BigQuerySinkConfig extends AbstractConfig {
             TABLE_CREATE_DEFAULT,
             TABLE_CREATE_IMPORTANCE,
             TABLE_CREATE_DOC
+        ).define(
+            REGEX_TABLE_ROUTER_CONFIG,
+            REGEX_TABLE_ROUTER_TYPE,
+            REGEX_TABLE_ROUTER_DEFAULT,
+            REGEX_TABLE_ROUTER_IMPORTANCE,
+            REGEX_TABLE_ROUTER_DOC
         );
   }
     /**
@@ -644,8 +655,85 @@ public class BigQuerySinkConfig extends AbstractConfig {
     }
 
     schemaRetriever.configure(originalsStrings());
-
     return schemaRetriever;
+  }
+
+  /**
+   * Check that a topic uses a single table router
+   * @param topic The topic that needs to be checked
+   * @param tableRouterToTopicsMap A map associating TableRouter to the topics using it
+   * @return a boolean indicating if a topic maps to a single Table Router
+   */
+  public boolean topicToRouterValidator(String topic,Map<Class<?>,List<String>> tableRouterToTopicsMap){
+    Boolean isTopicPresent = false;
+    for(Map.Entry<Class<?>,List<String>> entry: tableRouterToTopicsMap.entrySet()){
+      Set<String> topicSet = new HashSet<>(entry.getValue());
+      if (topicSet.contains(topic)){
+        if(!isTopicPresent) isTopicPresent = true;
+        else return false;
+      }
+    }
+    return isTopicPresent;
+  }
+
+  /**
+   * Given a config property that contains a list of [regex]=[string] mappings, returns a map from
+   * the regex patterns to the strings.
+   * @param configPropList a list of Table Router Config Properties
+   * @return A map of Table Router to topics using it
+   */
+
+  public Map<Class<?>,List<String>> getTableRouterToTopicsMap(String[] configPropList) {
+    Map<Class<? >, List<String>> tableRouterToTopicsMap = new HashMap<>();
+    for (String configProperty : configPropList) {
+      String mapping = getString(configProperty);
+      Map.Entry<String,String> entry = Validator.parseMapping(mapping,configProperty);
+      Class<?> key;
+      try {
+        key = Class.forName(entry.getKey());
+      } catch (ClassNotFoundException exception) {
+        throw new ConfigException("Class specified for " + configProperty
+                + "could not be found",exception);
+      }
+      if (!TableRouter.class.isAssignableFrom(key)) {
+        throw new ConfigException(
+                "Class specified for " + configProperty
+                        + " property does not implement " + TableRouter.class.getName()
+                        + " interface"
+        );
+      }
+      tableRouterToTopicsMap.put(key, Arrays.asList(entry.getValue().split(",")));
+    }
+    return tableRouterToTopicsMap;
+  }
+
+  /**
+   * Return the Table Router used by the topic
+   * @param topic The name of the topic for which the Table Router needs to be fetched
+   * @return a new instance of the TableRouter class
+   */
+
+  public TableRouter getTableRouter(String topic) {
+
+    String[] tableRouters = {REGEX_TABLE_ROUTER_CONFIG};
+
+    Map<Class<?>, List<String>> tableRouterToTopicsMap = getTableRouterToTopicsMap(tableRouters);
+    if (!topicToRouterValidator(topic, tableRouterToTopicsMap)) {
+      throw new ConfigException("A topic should use a single Table Router");
+    }
+    TableRouter tableRouter = null;
+    for (Map.Entry<Class<?>, List<String>> entry : tableRouterToTopicsMap.entrySet()) {
+      if (entry.getValue().contains(topic)) {
+        try {
+          tableRouter = entry.getKey().asSubclass(TableRouter.class).newInstance();
+          tableRouter.configure(originalsStrings());
+          break;
+        } catch (InstantiationException | IllegalAccessException exception) {
+          throw new ConfigException("Failed to instantiate the Table Router Class"+ entry.getKey());
+        }
+      }
+    }
+    return tableRouter;
   }
 
   /**

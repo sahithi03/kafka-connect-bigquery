@@ -33,9 +33,9 @@ import com.wepay.kafka.connect.bigquery.convert.KafkaDataBuilder;
 import com.wepay.kafka.connect.bigquery.convert.RecordConverter;
 import com.wepay.kafka.connect.bigquery.convert.SchemaConverter;
 import com.wepay.kafka.connect.bigquery.exception.SinkConfigConnectException;
+import com.wepay.kafka.connect.bigquery.route.TableRouter;
 import com.wepay.kafka.connect.bigquery.utils.FieldNameSanitizer;
 import com.wepay.kafka.connect.bigquery.utils.PartitionedTableId;
-import com.wepay.kafka.connect.bigquery.utils.TopicToTableResolver;
 import com.wepay.kafka.connect.bigquery.utils.Version;
 import com.wepay.kafka.connect.bigquery.write.batch.GCSBatchTableWriter;
 import com.wepay.kafka.connect.bigquery.write.batch.KCBQThreadPoolExecutor;
@@ -80,11 +80,10 @@ public class BigQuerySinkTask extends SinkTask {
   private GCSToBQWriter gcsToBQWriter;
   private BigQuerySinkTaskConfig config;
   private RecordConverter<Map<String, Object>> recordConverter;
-  private Map<String, TableId> topicsToBaseTableIds;
-  private boolean useMessageTimeDatePartitioning;
-  private boolean usePartitionDecorator;
 
+  private TableRouter tableRouter;
   private TopicPartitionManager topicPartitionManager;
+  private PartitionedTableId table;
 
   private KCBQThreadPoolExecutor executor;
   private static final int EXECUTOR_SHUTDOWN_TIMEOUT_SEC = 30;
@@ -133,33 +132,6 @@ public class BigQuerySinkTask extends SinkTask {
     topicPartitionManager.resumeAll();
   }
 
-  private PartitionedTableId getRecordTable(SinkRecord record) {
-    // Dynamically update topicToBaseTableIds mapping. topicToBaseTableIds was used to be
-    // constructed when connector starts hence new topic configuration needed connector to restart.
-    // Dynamic update shall not require connector restart and shall compute table id in runtime.
-    if (!topicsToBaseTableIds.containsKey(record.topic())) {
-      TopicToTableResolver.updateTopicToTable(config, record.topic(), topicsToBaseTableIds);
-    }
-
-    TableId baseTableId = topicsToBaseTableIds.get(record.topic());
-
-    PartitionedTableId.Builder builder = new PartitionedTableId.Builder(baseTableId);
-    if (usePartitionDecorator) {
-
-      if (useMessageTimeDatePartitioning) {
-        if (record.timestampType() == TimestampType.NO_TIMESTAMP_TYPE) {
-          throw new ConnectException(
-              "Message has no timestamp type, cannot use message timestamp to partition.");
-        }
-        builder.setDayPartition(record.timestamp());
-      } else {
-        builder.setDayPartitionForNow();
-      }
-    }
-
-    return builder.build();
-  }
-
   private RowToInsert getRecordRow(SinkRecord record) {
     Map<String, Object> convertedRecord = recordConverter.convertRecord(record, KafkaSchemaRecordType.VALUE);
     Optional<String> kafkaKeyFieldName = config.getKafkaKeyFieldName();
@@ -192,13 +164,13 @@ public class BigQuerySinkTask extends SinkTask {
 
     for (SinkRecord record : records) {
       if (record.value() != null) {
-        PartitionedTableId table = getRecordTable(record);
+        tableRouter = config.getTableRouter(record.topic());
+        table = tableRouter.getTable(record);
         if (schemaRetriever != null) {
           schemaRetriever.setLastSeenSchema(table.getBaseTableId(),
                                             record.topic(),
                                             record.valueSchema());
         }
-
         if (!tableWriterBuilders.containsKey(table)) {
           TableWriterBuilder tableWriterBuilder;
           if (config.getList(config.ENABLE_BATCH_CONFIG).contains(record.topic())) {
@@ -224,7 +196,6 @@ public class BigQuerySinkTask extends SinkTask {
         tableWriterBuilders.get(table).addRow(getRecordRow(record));
       }
     }
-
     // add tableWriters to the executor work queue
     for (TableWriterBuilder builder : tableWriterBuilders.values()) {
       executor.execute(builder.build());
@@ -333,14 +304,9 @@ public class BigQuerySinkTask extends SinkTask {
 
     bigQueryWriter = getBigQueryWriter();
     gcsToBQWriter = getGcsWriter();
-    topicsToBaseTableIds = TopicToTableResolver.getTopicsToTables(config);
     recordConverter = getConverter();
     executor = new KCBQThreadPoolExecutor(config, new LinkedBlockingQueue<>());
     topicPartitionManager = new TopicPartitionManager();
-    useMessageTimeDatePartitioning =
-        config.getBoolean(config.BIGQUERY_MESSAGE_TIME_PARTITIONING_CONFIG);
-    usePartitionDecorator = 
-            config.getBoolean(config.BIGQUERY_PARTITION_DECORATOR_CONFIG);
     if (hasGCSBQTask) {
       startGCSToBQLoadTask();
     }
