@@ -242,7 +242,7 @@ public class BigQuerySinkConfig extends AbstractConfig {
   public static final Boolean AUTO_CREATE_BUCKET_DEFAULT = false;
   private static final ConfigDef.Importance AUTO_CREATE_BUCKET_IMPORTANCE = ConfigDef.Importance.MEDIUM;
   private static final String AUTO_CREATE_BUCKET_DOC =
-          "Whether or not to auto create bucket";
+          "Whether or not to automatically create a bucket";
 
 
   static {
