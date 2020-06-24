@@ -24,6 +24,8 @@ import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.BucketInfo;
 import com.google.cloud.storage.Storage;
 import com.wepay.kafka.connect.bigquery.GCSBuilder;
+import com.wepay.kafka.connect.bigquery.config.BigQuerySinkConfig;
+import com.wepay.kafka.connect.bigquery.config.BigQuerySinkTaskConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,7 +49,7 @@ public class BucketClearer {
     // if bucket exists, delete it.
     String bucketName = args[2];
     Bucket bucket = gcs.get(bucketName);
-    if(bucket == null){
+    if(bucket == null && BigQuerySinkConfig.AUTO_CREATE_BUCKET_DEFAULT){
       BucketInfo bucketInfo = BucketInfo.of(bucketName);
       bucket = gcs.create(bucketInfo);
     }

@@ -230,12 +230,19 @@ public class BigQuerySinkConfig extends AbstractConfig {
 
   public static final String REGEX_TABLE_ROUTER_CONFIG = "RegexTableRouterTopics";
   private static final ConfigDef.Type REGEX_TABLE_ROUTER_TYPE = ConfigDef.Type.STRING;
-  private static final String REGEX_TABLE_ROUTER_DEFAULT = null; ;
+  public static final String REGEX_TABLE_ROUTER_DEFAULT = null; ;
   private static final ConfigDef.Importance REGEX_TABLE_ROUTER_IMPORTANCE =
           ConfigDef.Importance.MEDIUM;
   private static final String REGEX_TABLE_ROUTER_DOC =
           "Topics that will use RegexTableRouter"+
                   "specified in the format - <RegexTableRouterClassName>=<Comma separated list of topics>";
+
+  public static final String AUTO_CREATE_BUCKET_CONFIG = "AutoCreateBucket";
+  private static final ConfigDef.Type AUTO_CREATE_BUCKET_TYPE = ConfigDef.Type.BOOLEAN;
+  public static final Boolean AUTO_CREATE_BUCKET_DEFAULT = false;
+  private static final ConfigDef.Importance AUTO_CREATE_BUCKET_IMPORTANCE = ConfigDef.Importance.MEDIUM;
+  private static final String AUTO_CREATE_BUCKET_DOC =
+          "Whether or not to auto create bucket";
 
 
   static {
@@ -376,6 +383,12 @@ public class BigQuerySinkConfig extends AbstractConfig {
             REGEX_TABLE_ROUTER_DEFAULT,
             REGEX_TABLE_ROUTER_IMPORTANCE,
             REGEX_TABLE_ROUTER_DOC
+        ).define(
+            AUTO_CREATE_BUCKET_CONFIG,
+            AUTO_CREATE_BUCKET_TYPE,
+            AUTO_CREATE_BUCKET_DEFAULT,
+            AUTO_CREATE_BUCKET_IMPORTANCE,
+            AUTO_CREATE_BUCKET_DOC
         );
   }
     /**
