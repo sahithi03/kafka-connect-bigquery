@@ -19,6 +19,4 @@ public interface TableRouter {
      * @return PartitionedTableId A TableId with separate base table name and partition information
      */
     PartitionedTableId getTable(SinkRecord sinkRecord);
-
-
 }

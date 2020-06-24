@@ -25,7 +25,7 @@ import com.google.cloud.storage.BucketInfo;
 import com.google.cloud.storage.Storage;
 import com.wepay.kafka.connect.bigquery.GCSBuilder;
 import com.wepay.kafka.connect.bigquery.config.BigQuerySinkConfig;
-import com.wepay.kafka.connect.bigquery.config.BigQuerySinkTaskConfig;
+import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,22 +46,19 @@ public class BucketClearer {
     }
     Storage gcs = new GCSBuilder(args[1]).setKey(args[0]).setKeySource(keySource).build();
 
-    // if bucket exists, delete it.
     String bucketName = args[2];
     Bucket bucket = gcs.get(bucketName);
-    if(bucket == null && BigQuerySinkConfig.AUTO_CREATE_BUCKET_DEFAULT){
-      BucketInfo bucketInfo = BucketInfo.of(bucketName);
-      bucket = gcs.create(bucketInfo);
+    if(bucket == null){
+      if(BigQuerySinkConfig.AUTO_CREATE_BUCKET_DEFAULT){
+        BucketInfo bucketInfo = BucketInfo.of(bucketName);
+        bucket = gcs.create(bucketInfo);
+      }
+      else throw new ConfigException("Bucket does not exist and "+ BigQuerySinkConfig.AUTO_CREATE_BUCKET_CONFIG + "is false");
     }
-    logger.info("deleting objects in bucket");
-//    for(Blob blob: bucket.list().iterateAll()){
-//      gcs.delete(blob.getBlobId());
-//    }
-//    if (gcs.delete(bucketName)) {
-//      logger.info("Bucket {} deleted successfully", bucketName);
-//    } else {
-//      logger.info("Bucket {} does not exist", bucketName);
-//    }
+    logger.info("Deleting objects in the bucket");
+    for(Blob blob: bucket.list().iterateAll()){
+      gcs.delete(blob.getBlobId());
+    }
   }
 
   private static void usage() {
