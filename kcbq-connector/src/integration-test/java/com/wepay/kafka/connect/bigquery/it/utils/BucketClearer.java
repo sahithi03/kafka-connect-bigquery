@@ -21,11 +21,9 @@ package com.wepay.kafka.connect.bigquery.it.utils;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 
-import com.google.cloud.storage.BucketInfo;
+
 import com.google.cloud.storage.Storage;
 import com.wepay.kafka.connect.bigquery.GCSBuilder;
-import com.wepay.kafka.connect.bigquery.config.BigQuerySinkConfig;
-import org.apache.kafka.common.config.ConfigException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,16 +46,11 @@ public class BucketClearer {
 
     String bucketName = args[2];
     Bucket bucket = gcs.get(bucketName);
-    if(bucket == null){
-      if(BigQuerySinkConfig.AUTO_CREATE_BUCKET_DEFAULT){
-        BucketInfo bucketInfo = BucketInfo.of(bucketName);
-        bucket = gcs.create(bucketInfo);
+    if (bucket != null) {
+      logger.info("Deleting objects in the bucket");
+      for (Blob blob : bucket.list().iterateAll()) {
+        gcs.delete(blob.getBlobId());
       }
-      else throw new ConfigException("Bucket does not exist and "+ BigQuerySinkConfig.AUTO_CREATE_BUCKET_CONFIG + "is false");
-    }
-    logger.info("Deleting objects in the bucket");
-    for(Blob blob: bucket.list().iterateAll()){
-      gcs.delete(blob.getBlobId());
     }
   }
 

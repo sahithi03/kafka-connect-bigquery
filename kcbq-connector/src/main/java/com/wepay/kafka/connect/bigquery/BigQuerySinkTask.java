@@ -20,7 +20,6 @@ package com.wepay.kafka.connect.bigquery;
 
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.InsertAllRequest.RowToInsert;
-import com.google.cloud.bigquery.TableId;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.BucketInfo;
 import com.google.cloud.storage.Storage;
@@ -48,7 +47,6 @@ import com.wepay.kafka.connect.bigquery.write.row.SimpleBigQueryWriter;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigException;
-import org.apache.kafka.common.record.TimestampType;
 import org.apache.kafka.connect.errors.ConnectException;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
@@ -322,8 +320,11 @@ public class BigQuerySinkTask extends SinkTask {
     if (bucket == null) {
       // todo here is where we /could/ set a retention policy for the bucket,
       // but for now I don't think we want to do that.
-      BucketInfo bucketInfo = BucketInfo.of(bucketName);
-      bucket = gcs.create(bucketInfo);
+      if (config.getBoolean(config.AUTO_CREATE_BUCKET_CONFIG)) {
+        BucketInfo bucketInfo = BucketInfo.of(bucketName);
+        bucket = gcs.create(bucketInfo);
+      }
+      else throw new ConfigException("Bucket does not exist. Set "+ config.AUTO_CREATE_BUCKET_CONFIG + "to true");
     }
     GCSToBQLoadRunnable loadRunnable = new GCSToBQLoadRunnable(getBigQuery(), bucket);
 
