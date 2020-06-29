@@ -169,6 +169,7 @@ public class BigQuerySinkTask extends SinkTask {
                                             record.topic(),
                                             record.valueSchema());
         }
+
         if (!tableWriterBuilders.containsKey(table)) {
           TableWriterBuilder tableWriterBuilder;
           if (config.getList(config.ENABLE_BATCH_CONFIG).contains(record.topic())) {
@@ -194,6 +195,7 @@ public class BigQuerySinkTask extends SinkTask {
         tableWriterBuilders.get(table).addRow(getRecordRow(record));
       }
     }
+
     // add tableWriters to the executor work queue
     for (TableWriterBuilder builder : tableWriterBuilders.values()) {
       executor.execute(builder.build());

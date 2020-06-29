@@ -668,6 +668,7 @@ public class BigQuerySinkConfig extends AbstractConfig {
     }
 
     schemaRetriever.configure(originalsStrings());
+
     return schemaRetriever;
   }
 
